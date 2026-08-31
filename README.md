@@ -16,110 +16,99 @@ CIC-IDS2017 is a network traffic dataset with 5 days of captured flows. I used
 | `friday_DDoS_clean.csv` | Normal traffic + DDoS |
 | `friday_portscan_clean.csv` | Normal traffic + PortScan |
 | `friday_Mrg_bot_clean.csv` | Normal traffic + Bot |
+| `Wednesday_DoS_Hb_clean.csv` | Normal traffic + DoS + Heartbleed |
+| `Thursday_Web_clean.csv` | Normal traffic + Web Attacks |
+| `Thursday_Infiltration_clean.csv` | Normal traffic + Infiltration |
 
-Each row is one network flow (a connection between two devices) with about 78
-columns describing it — packet counts, duration, byte counts, flag counts, etc.
+# My Network Intrusion Detection Project — The Story
 
-## The idea
+**Original project:** https://github.com/PoojaChavanPatil/securite-anomaly-detection_new/tree/main
 
-Monday has zero attacks in it, so it tells us what "normal" looks like. I train
-5 models on Monday only. None of them ever see a label while training.
+This file explains,what I built, how it grew, and what I learned along the way — including two interview questions that pushed me to add new things to the project.
 
-Then I run all 5 models on the other 4 files (which do have attacks) and see
-which flows each model flags as "weird." Only after that do I open up the real
-labels and check how many attacks were actually caught.
+---
 
-This matters because in real life you usually don't have labelled attack data
-to train on — you only have normal traffic. So this setup mimics a real
-situation.
+## 1. What I built, in simple words
 
-## The 5 models
+I wanted to build a system that can catch hackers attacking a computer network — but without ever showing the computer any examples of "this is an attack" during training. This is called **unsupervised learning**. I only showed the model normal, safe traffic (from Monday, which has zero attacks in it), and let it learn on its own what "normal" looks like. Anything that looks different from normal later gets flagged.
 
-| Model | Basic idea |
-|---|---|
-| Isolation Forest | Attacks are easier to isolate with random splits than normal traffic |
-| One-Class SVM | Draws a boundary around normal traffic, anything outside is flagged |
-| Local Outlier Factor (LOF) | Flags points that sit in a low-density area compared to their neighbours |
-| PCA reconstruction | Compresses and rebuilds each row — attacks rebuild badly |
-| Autoencoder | Same idea as PCA but using a small neural network instead |
+I used five different models to do this: Isolation Forest, One-Class SVM, LOF, PCA, and an Autoencoder. Each one looks for "different from normal" in its own way — like five different security guards, each trained to notice a different kind of suspicious behavior.
 
-## How to run it
+---
 
-1. Clone this repo
-2. Install the packages:
-   ```bash
-   pip install pandas numpy scikit-learn matplotlib plotly
-   ```
-3. Download the 5 CIC-IDS2017 CSV files (link in Data section below) and put
-   them in one folder
-4. Open `Final_Unsupervised_Anomaly_Detection.ipynb` in Jupyter
-5. In the second cell, change the `path` variable to point at your folder:
-   ```python
-   path = "your/folder/path/here/"
-   ```
-6. Run all cells top to bottom (Kernel → Restart & Run All)
+## 2. The story of how the project grew
 
-The whole notebook takes about 3–5 minutes to run.
+**Step 1 — I started small, then added more data.**
+My first version used 5 files. Later, I added 3 more files — Wednesday's DoS/Heartbleed attacks, Thursday's Web Attacks, and Thursday's Infiltration attacks — so I had all 8 files, covering every attack type in the dataset.
 
-## Data
+**Step 2 — I found a hidden bug that was hiding my rare attacks.**
+When I looked closely, I noticed something wrong. Some attacks are extremely rare — Heartbleed only has 11 examples in the whole dataset, Infiltration has 36. When I picked a random sample of data to test my models on, these rare attacks almost never showed up — one time I checked, I got only 1 Heartbleed row and 3 Infiltration rows instead of the real numbers. That's not enough to know if my model can catch them at all.
 
-The dataset is from the Canadian Institute for Cybersecurity:
-https://www.unb.ca/cic/datasets/ids-2017.html
+So I fixed it. Instead of picking data completely at random, I made sure every attack type is guaranteed a fair spot in my test data — common attacks get capped at 20,000 rows so they don't take over everything, but rare attacks always keep every single row they have. After this fix, all 14 attack types showed up properly, every time.
 
-The CSVs used here are the cleaned versions (missing values and infinities
-already removed, column names stripped of extra spaces).
+**Step 3 — I answered my own project's main question: "how many alerts is each model sending?"**
+This was the real goal of my project. I built a table showing exactly how many alerts each model fires, how many were correct, how many were false alarms, and how many attacks it completely missed. I also broke this down by attack type, and made a chart to see it visually.
 
-## What I found
+What I found: my LOF model was the loudest — it flagged about 72% of all traffic, but it also caught the most real attacks. My quietest model, One-Class SVM, flagged less than half the traffic, but it also missed the most attacks. So "loud" and "quiet" aren't automatically "bad" or "good" — I had to look deeper.
 
-**Accuracy alone doesn't mean much here.** About 26% of the test data is
-attacks, so a model that predicts "normal" every single time still gets 74%
-accuracy. I mainly looked at PR-AUC and the F1 score of the attack class
-instead.
+**Step 4 — I tried combining models, and it didn't fully work — and that's okay.**
+I thought: what if I only trust an alert when 2 or more models agree? I tested it. The result: fewer false alarms, but also more missed attacks — because some attacks were only caught by LOF, and no other model backed it up. So I kept LOF as my strongest single model instead of forcing all models to agree. Not every idea works, and that's a real, honest finding too.
 
-**Autoencoder came out on top**, catching about 91% of attacks with about 76%
-precision. PCA was a close second. One-Class SVM was the weakest and also the
-slowest to train.
+**Step 5 — I made alerts smarter, not just "yes or no."**
+Instead of a flat "attack" or "not attack," I built a severity system: Low, Medium, High. I also checked something important — does "High" really mean "I'm very sure this is an attack"? For 4 out of 5 models, yes, higher severity meant higher confidence, exactly as expected. But LOF broke this pattern — its "High" alerts were actually less trustworthy than its "Medium" ones. That was a surprising, useful thing to learn.
 
-**The bigger finding is in the per-attack breakdown, not the overall score.**
-Averaging across all attacks hides a lot:
+**Step 6 — I cleaned up my own notebook.**
+As I kept adding things, my notebook got messy — some code got duplicated, a couple of cells had plain text sitting where code should be (which would crash if run), and two important pieces of code (confusion matrix, and the ensemble voting test) had gone missing even though their titles were still there. I found all of this, fixed it, and reorganized the whole notebook into clear sections so it reads in a logical order from start to finish.
 
-- DDoS and PortScan are detected really well by almost every model (85–99%)
-- Different models are good at different brute-force attacks — Autoencoder
-  catches FTP-Patator well but barely catches SSH-Patator, LOF is the opposite
-- Bot is the one attack that basically none of the models can catch well (under
-  30% no matter which model)
+---
 
-Bot traffic is built to look like normal web traffic, and since every model
-here only looks at one network flow at a time, there isn't much in a single
-flow to tell it apart from something normal. Catching it properly would
-probably need features built across multiple flows over time, not just a
-better model.
+## 3. Two interview questions that pushed me further
 
-## Notes on the code
+While preparing for interviews, I was asked two real questions that made me go back and add new things to my project. Here they are, told as a story of how I thought through each one.
 
-- The threshold used to decide "is this an attack" is picked from the training
-  data only (95th percentile of the scores on Monday), not from the test
-  labels. This keeps the whole thing honestly unsupervised.
-- The labels are only used once, right before printing the results — never
-  during training or scoring.
-- `QuantileTransformer` is used instead of `StandardScaler` because a few
-  columns like Flow Duration have very extreme outliers that would otherwise
-  dominate the distance-based models (LOF, One-Class SVM).
+### Question 1: If one of your models sends too many alerts, how would you manage that?
 
-## Limitations
+At first, this felt like a simple question — just "raise the threshold." But I realized that's not a complete answer. So I looked at my own numbers again.
 
-- Only about 50,000 rows of Monday were used for training and 200,000 rows for
-  testing, to keep runtime reasonable. Using the full dataset would likely give
-  slightly different numbers.
-- Each row is judged on its own. Attacks that only look unusual as a *pattern
-  over time* (like many failed logins in a row) are hard for these models to
-  catch.
-- Only one random seed was used, so the exact numbers could shift a bit on a
-  different run.
-- The analysis was conducted on the Monday, Tuesday, and Friday (morning and afternoon) datasets; Wednesday and Thursday data were not included.
-  
+I found that LOF, my loudest model, wasn't just noisy for no reason — it was noisy *because* it's the only model good at catching sneaky attacks like brute-force logins and web attacks. If I just turned its volume down, I'd also lose the attacks only it can catch.
 
-## Results
+**So here's how I'd actually manage it, step by step:**
+
+1. First, figure out *where* the extra alerts are coming from — are they spread out everywhere, or clustered around one specific thing?
+2. Re-tune the threshold carefully for each model, instead of using one flat number for all of them.
+3. Use severity tiers (Low/Medium/High) so a security analyst reviews the most confident alerts first, instead of treating every single alert the same.
+4. Only require multiple models to agree for the *most* important escalations — not everywhere, since I proved that costs real detections.
+5. In a real company, I'd also group repeated alerts from the same source into one single alert (instead of a hundred small ones), and build a feedback loop where analysts mark alerts as "real" or "false," and the system slowly gets smarter from that feedback over time.
+
+**In real life, this matters because:** if a security team gets flooded with too many alerts, they eventually start ignoring all of them — including the real attacks. That's how actual companies get hacked even though their system "did" send a warning. So managing alert volume isn't about silence — it's about making sure the right alerts get seen first.
+
+### Question 2: If your product is used by two hospitals, and one works fine but the other doesn't, what would you do?
+
+This question stuck with me, because I didn't have real data from two different hospitals to test with. I didn't want to just talk about it in theory — I wanted to actually show I could investigate it. So I built the closest honest version I could, using data I actually had: I compared Monday's traffic (what my model learned from) against the *normal* traffic from the other days, and treated those as a stand-in for "two different places."
+
+**Here's the story of what I found, step by step:**
+
+- **First, I did a simple comparison** of average values between the two. It looked alarming — some numbers were off by tens of thousands of percent! But when I looked closer, I found the problem wasn't real drift — it was broken data (some values were impossible, like a negative header length). This taught me: don't trust the first simple number you see, always sanity-check it.
+- **So I used a better method** — a proper statistical drift test (PSI and KS test) on every feature. This time, the results looked calm — every feature showed only mild differences, nothing alarming.
+- **But I didn't stop there.** I asked one more question: does this "mild" difference actually matter to the model? So I took my trained model and tested it directly on the "other site's" normal traffic, and checked how many false alarms it created. The answer surprised me: **11.49%** of totally normal traffic got wrongly flagged as an attack — more than double what it should have been.
+
+**The real lesson:** no single feature looked dramatically different on its own, but small little differences across many features added up, and the model ended up over twice as trigger-happy on the new "site" as it should have been. Checking the model's actual real-world behavior told me something that checking the raw numbers alone completely missed.
+
+**So here's what I'd actually do in a real hospital deployment:**
+
+1. Before assuming anything is broken, run this exact test on the real second hospital's data — check feature drift, then check the model's actual false-alarm rate on their normal traffic.
+2. Talk to the hospital's IT team — maybe they simply have different devices or network setup, which has nothing to do with the model itself.
+3. Check if my training data was fair to both hospitals, or if it leaned heavily toward just the first one — that's often the real root cause.
+4. Personally look at a sample of the alerts with someone from that hospital, to check if they're truly wrong, or just unusual-but-harmless traffic (like a nightly backup job).
+5. Keep checking this over time, not just once 
+
+---
+
+## 4. What I'm most proud of, honestly
+
+I didn't just run five models and pick the best score. I found a real bug in how I was testing rare attacks and fixed it. I tried an idea (combining models) that didn't fully work, and I kept that honest result instead of hiding it. And when asked a hard interview question I couldn't fully answer with real data, I built the closest honest version I could, said clearly what it wasn't, and still found something genuinely useful from it.
+
+That, to me, is the real point of this project — not just getting good numbers, but learning to question my own results before trusting them.
 
 ### Threshold Sweep
 ![Threshold sweep](threshold_sweep.png)
