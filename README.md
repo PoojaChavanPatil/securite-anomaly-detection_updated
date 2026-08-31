@@ -143,3 +143,4 @@ That, to me, is the real point of this project — not just getting good numbers
 
 ### Alters per model
 ![Bar_chart](alerts_per_model.png)
+
