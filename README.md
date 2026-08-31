@@ -138,8 +138,8 @@ That, to me, is the real point of this project — not just getting good numbers
 ### Threshold Sweep
 ![Threshold sweep](threshold_sweep.png)
 
-### Alters per model
-![Bar_chart](alerts_per_model.png)
-
 ### per_attack_heatmap
 ![Heatmap](per_attack_heatmap.png)
+
+### Alters per model
+![Bar_chart](alerts_per_model.png)
